@@ -1,9 +1,11 @@
 package main
 
 import (
+	b64 "encoding/base64"
 	"fmt"
 	"github.com/gorilla/websocket"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 )
@@ -102,7 +104,17 @@ func serveWs(pool *Pool, w http.ResponseWriter, r *http.Request) {
 func setupRoutes() {
 	pool := NewPool()
 	go pool.Start()
-
+	tpl, err := ioutil.ReadFile("./index.html")
+	tpl64 := b64.StdEncoding.EncodeToString(tpl)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	log.Println(tpl64)
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := b64.StdEncoding.DecodeString(tpl64)
+		fmt.Fprintf(w, string(body))
+	})
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(pool, w, r)
 	})
