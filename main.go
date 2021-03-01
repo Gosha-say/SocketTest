@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	b64 "encoding/base64"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	_ "github.com/mattn/go-sqlite3"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -48,52 +48,12 @@ func NewPool() *Pool {
 	}
 }
 
-func Reader(conn *websocket.Conn) {
-	for {
-		messageType, p, err := conn.ReadMessage()
-		if err != nil {
-			log.Println(err)
-			return
-		}
-
-		fmt.Println(string(p))
-
-		if err := conn.WriteMessage(messageType, p); err != nil {
-			log.Println(err)
-			return
-		}
-	}
-}
-
-func Writer(conn *websocket.Conn) {
-	for {
-		fmt.Println("Sending")
-		messageType, r, err := conn.NextReader()
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		w, err := conn.NextWriter(messageType)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		if _, err := io.Copy(w, r); err != nil {
-			fmt.Println(err)
-			return
-		}
-		if err := w.Close(); err != nil {
-			fmt.Println(err)
-			return
-		}
-	}
-}
-
 func serveWs(pool *Pool, w http.ResponseWriter, r *http.Request) {
 	fmt.Println("WebSocket Endpoint Hit")
 	conn, err := Upgrade(w, r)
 	if err != nil {
-		fmt.Fprintf(w, "%+v\n", err)
+		_, err := fmt.Fprintf(w, "%+v\n", err)
+		checkErr(err)
 	}
 
 	client := &Client{
@@ -116,8 +76,10 @@ func setupRoutes() {
 	//}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := b64.StdEncoding.DecodeString(html)
-		fmt.Fprintf(w, string(body))
+		_, err := fmt.Fprintf(w, string(body))
+		checkErr(err)
 	})
+
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(pool, w, r)
 	})
@@ -149,11 +111,36 @@ func main() {
 	db, err := sql.Open("sqlite3", "./data/db.sqlite")
 	checkErr(err)
 
-	result, err := db.Exec("CREATE TABLE IF NOT EXISTS main.products(id INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE, model  TEXT, company TEXT,vprice INTEGER)", "Apple", 72000)
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS main.members(id INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE, name  VARCHAR(16), time timestamp default (strftime('%s', 'now')),key varchar(12))")
 	checkErr(err)
 
-	fmt.Println(result.LastInsertId())
-	fmt.Println(result.RowsAffected())
+	rows, err := db.Query("select name from main.members where name = 'Server'")
+	checkErr(err)
+	defer rows.Close()
+	checkErr(rows.Err())
+	if !rows.Next() {
+		id := uuid.New()
+		fmt.Println("Creating user 'server' with id " + id.String())
+		result, err := db.Exec("INSERT INTO main.members (name, key) values ('Server', ?)", id.String())
+		checkErr(err)
+		fmt.Print("Rows: ")
+		fmt.Println(result.RowsAffected())
+	} else {
+		fmt.Println("User 'Server' exists")
+	}
+
+	fmt.Print("Try to create table 'messages'")
+	_, err = db.Exec(`create table if not exists messages
+(
+	id integer primary key autoincrement unique,
+	time timestamp default (strftime('%s', 'now')),
+	member integer not null,
+	type integer default 1 not null,
+	body varchar(255) not null,
+	other text
+);`)
+	checkErr(err)
+	fmt.Println(" - OK")
 
 	checkErr(db.Close())
 
