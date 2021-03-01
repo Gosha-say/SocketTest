@@ -111,7 +111,14 @@ func main() {
 	db, err := sql.Open("sqlite3", "./data/db.sqlite")
 	checkErr(err)
 
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS main.members(id INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE, name  VARCHAR(16), time timestamp default (strftime('%s', 'now')),key varchar(12))")
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS main.members
+(
+	id INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE,
+	name  VARCHAR(16), 
+	time timestamp default (strftime('%s', 'now')),
+	key varchar(12)
+);`)
+
 	checkErr(err)
 
 	rows, err := db.Query("select name from main.members where name = 'Server'")
@@ -141,7 +148,8 @@ func main() {
 );`)
 	checkErr(err)
 	fmt.Println(" - OK")
-
+	_, err = db.Exec("INSERT INTO main.messages (member, type, body) values (1, 1, 'Begin...')")
+	checkErr(err)
 	checkErr(db.Close())
 
 	setupRoutes()
